@@ -33,7 +33,7 @@
 #endif
 
 #include "tterrors.h"
-
+#include "ttsubpixel.h"
 
   /*************************************************************************/
   /*                                                                       */
@@ -165,6 +165,12 @@
     loader->advance      = advance_width;
     loader->top_bearing  = top_bearing;
     loader->vadvance     = advance_height;
+
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    if ( loader->exec ) loader->exec->sph_tweak_flags = 0x00000;
+    /* this may not be the right place for this, but it works */
+    if ( loader->exec && loader->exec->enhanced ) sph_set_tweaks( loader, glyph_index );
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
     if ( !loader->linear_def )
     {
@@ -1683,13 +1689,23 @@
          IS_HINTED( loader->load_flags ) )
     {
       FT_Byte*  widthp;
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+      FT_Bool   enhanced;
 
+      enhanced =
+        FT_BOOL( FT_LOAD_TARGET_MODE( loader->load_flags )
+                 != FT_RENDER_MODE_MONO );
 
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
       widthp = tt_face_get_device_metrics( face,
                                            size->root.metrics.x_ppem,
                                            glyph_index );
 
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+      if ( ( !enhanced || BITMAP_WIDTHS ) && widthp )
+#else
       if ( widthp )
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
         glyph->metrics.horiAdvance = *widthp << 6;
     }
 
@@ -1883,8 +1899,13 @@
     {
       TT_ExecContext  exec;
       FT_Bool         grayscale;
-
-
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+      FT_Bool         subpixel_hinting;
+      FT_Bool         grayscale_hinting;
+      /*FT_Bool         compatible_widths;
+      FT_Bool         symmetrical_smoothing;
+      FT_Bool         bgr;*/
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
       if ( !size->cvt_ready )
       {
         FT_Error  error = tt_size_ready_bytecode( size );
@@ -1898,10 +1919,69 @@
       if ( !exec )
         return TT_Err_Could_Not_Find_Context;
 
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+      subpixel_hinting =
+        FT_BOOL( (FT_LOAD_TARGET_MODE( load_flags ) != FT_RENDER_MODE_MONO)
+          && SET_SUBPIXEL );
+
+      if ( subpixel_hinting ) grayscale = grayscale_hinting = FALSE;
+      else if ( SET_GRAYSCALE )
+      {
+        grayscale = grayscale_hinting = TRUE;
+        subpixel_hinting = FALSE;
+      }
+
+      exec->enhanced = ( subpixel_hinting
+                      || grayscale_hinting );
+
+      exec->rasterizer_version = SET_RASTERIZER_VERSION;
+
+      exec->compatible_widths = SET_COMPATIBLE_WIDTHS;
+        /*FT_BOOL( FT_LOAD_TARGET_MODE( load_flags )
+                   != TT_LOAD_COMPATIBLE_WIDTHS );*/
+
+      exec->symmetrical_smoothing = FALSE;
+        /*FT_BOOL( FT_LOAD_TARGET_MODE( load_flags )
+                   != TT_LOAD_SYMMETRICAL_SMOOTHING );*/
+
+      exec->bgr = FALSE;
+        /*FT_BOOL( FT_LOAD_TARGET_MODE( load_flags )
+                   != TT_LOAD_BGR );*/
+#else
       grayscale =
         FT_BOOL( FT_LOAD_TARGET_MODE( load_flags ) != FT_RENDER_MODE_MONO );
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
       TT_Load_Context( exec, face, size );
+
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+
+      /* a change from mono to subpixel rendering (and vice versa)  */
+      /* requires a re-execution of the CVT program                 */
+      if ( subpixel_hinting != exec->subpixel_hinting )
+      {
+        FT_UInt  i;
+
+        exec->subpixel_hinting = subpixel_hinting;
+
+        for ( i = 0; i < size->cvt_size; i++ )
+          size->cvt[i] = FT_MulFix( face->cvt[i], size->ttmetrics.scale );
+        tt_size_run_prep( size );
+      }
+
+      /* a change from mono to grayscale rendering (and vice versa)  */
+      /* requires a re-execution of the CVT program                 */
+      if ( grayscale != exec->grayscale_hinting )
+      {
+        FT_UInt  i;
+
+        exec->grayscale_hinting = grayscale_hinting;
+
+        for ( i = 0; i < size->cvt_size; i++ )
+          size->cvt[i] = FT_MulFix( face->cvt[i], size->ttmetrics.scale );
+        tt_size_run_prep( size );
+      }
+#else
 
       /* a change from mono to grayscale rendering (and vice versa) */
       /* requires a re-execution of the CVT program                 */
@@ -1909,16 +1989,13 @@
       {
         FT_UInt  i;
 
-
-        FT_TRACE4(( "tt_loader_init: grayscale change,"
-                    " re-executing `prep' table\n" ));
-
         exec->grayscale = grayscale;
 
         for ( i = 0; i < size->cvt_size; i++ )
           size->cvt[i] = FT_MulFix( face->cvt[i], size->ttmetrics.scale );
         tt_size_run_prep( size );
       }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
       /* see whether the cvt program has disabled hinting */
       if ( exec->GS.instruct_control & 1 )
@@ -2050,6 +2127,7 @@
           if ( face->postscript.isFixedPitch                             &&
                ( load_flags & FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH ) == 0 )
             glyph->linearHoriAdvance = face->horizontal.advance_Width_Max;
+
         }
 
         return TT_Err_Ok;
@@ -2125,6 +2203,9 @@
         }
         else
           glyph->outline.flags |= FT_OUTLINE_IGNORE_DROPOUTS;
+
+
+
       }
 
 #endif /* TT_USE_BYTECODE_INTERPRETER */

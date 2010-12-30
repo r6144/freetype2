@@ -27,9 +27,11 @@
 
 #include "tterrors.h"
 
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+#include "ttsubpixel.h"
+#endif
 
 #ifdef TT_USE_BYTECODE_INTERPRETER
-
 
 #define TT_MULFIX           FT_MulFix
 #define TT_MULDIV           FT_MulDiv
@@ -150,11 +152,11 @@
 #define NORMalize( x, y, v ) \
           Normalize( EXEC_ARG_ x, y, v )
 
-#define SET_SuperRound( scale, flags ) \
-          SetSuperRound( EXEC_ARG_ scale, flags )
+#define SET_SuperRound( scale, flags, res ) \
+          SetSuperRound( EXEC_ARG_ scale, flags, res )
 
-#define ROUND_None( d, c ) \
-          Round_None( EXEC_ARG_ d, c )
+#define ROUND_None( d, c, e ) \
+          Round_None( EXEC_ARG_ d, c, e )
 
 #define INS_Goto_CodeRange( range, ip ) \
           Ins_Goto_CodeRange( EXEC_ARG_ range, ip )
@@ -165,8 +167,8 @@
 #define CUR_Func_move_orig( z, p, d ) \
           CUR.func_move_orig( EXEC_ARG_ z, p, d )
 
-#define CUR_Func_round( d, c ) \
-          CUR.func_round( EXEC_ARG_ d, c )
+#define CUR_Func_round( d, c, e ) \
+          CUR.func_round( EXEC_ARG_ d, c, e )
 
 #define CUR_Func_read_cvt( index ) \
           CUR.func_read_cvt( EXEC_ARG_ index )
@@ -245,6 +247,12 @@
 #else
 #define GUESS_VECTOR( V )
 #endif
+
+
+    /*FT_Int             CUR.num_delta_funcs;*/
+    /*FT_ULong           inline_delta_funcs[5];*/
+    /*FT_Long            CUR.infunc;*/
+
 
   /*************************************************************************/
   /*                                                                       */
@@ -1843,24 +1851,33 @@
     FT_ASSERT( !CUR.face->unpatented_hinting );
 #endif
 
-    v = CUR.GS.freeVector.x;
-
-    if ( v != 0 )
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    if ( !CUR.enhanced || CUR.sph_tweak_flags & SPH_TWEAK_ALLOW_DMOVE_FREEV )
     {
-      zone->cur[point].x += TT_MULDIV( distance,
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
+
+      v = CUR.GS.freeVector.x;
+
+      if ( v != 0 )
+      {
+        zone->cur[point].x += TT_MULDIV( distance,
                                        v * 0x10000L,
                                        CUR.F_dot_P );
 
-      zone->tags[point] |= FT_CURVE_TAG_TOUCH_X;
+        zone->tags[point] |= FT_CURVE_TAG_TOUCH_X;
+      }
+
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
     }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
     v = CUR.GS.freeVector.y;
 
     if ( v != 0 )
     {
       zone->cur[point].y += TT_MULDIV( distance,
-                                       v * 0x10000L,
-                                       CUR.F_dot_P );
+                                      v * 0x10000L,
+                                      CUR.F_dot_P );
 
       zone->tags[point] |= FT_CURVE_TAG_TOUCH_Y;
     }
@@ -1900,17 +1917,16 @@
 
     if ( v != 0 )
       zone->org[point].x += TT_MULDIV( distance,
-                                       v * 0x10000L,
-                                       CUR.F_dot_P );
+                                      v * 0x10000L,
+                                      CUR.F_dot_P );
 
     v = CUR.GS.freeVector.y;
 
     if ( v != 0 )
       zone->org[point].y += TT_MULDIV( distance,
-                                       v * 0x10000L,
-                                       CUR.F_dot_P );
+                                      v * 0x10000L,
+                                      CUR.F_dot_P );
   }
-
 
   /*************************************************************************/
   /*                                                                       */
@@ -1928,9 +1944,16 @@
                           FT_F26Dot6    distance )
   {
     FT_UNUSED_EXEC;
-
-    zone->cur[point].x += distance;
-    zone->tags[point]  |= FT_CURVE_TAG_TOUCH_X;
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    if ( !CUR.enhanced
+      || ( CUR.sph_tweak_flags & SPH_TWEAK_ALLOW_DMOVEX_FREEV ) )
+      {
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
+        zone->cur[point].x += distance;
+        zone->tags[point]  |= FT_CURVE_TAG_TOUCH_X;
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+      }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
   }
 
 
@@ -1944,7 +1967,6 @@
     zone->cur[point].y += distance;
     zone->tags[point]  |= FT_CURVE_TAG_TOUCH_Y;
   }
-
 
   /*************************************************************************/
   /*                                                                       */
@@ -1964,6 +1986,7 @@
     FT_UNUSED_EXEC;
 
     zone->org[point].x += distance;
+
   }
 
 
@@ -1974,7 +1997,7 @@
   {
     FT_UNUSED_EXEC;
 
-    zone->org[point].y += distance;
+      zone->org[point].y += distance;
   }
 
 
@@ -2002,7 +2025,8 @@
   /*                                                                       */
   static FT_F26Dot6
   Round_None( EXEC_OP_ FT_F26Dot6  distance,
-                       FT_F26Dot6  compensation )
+                       FT_F26Dot6  compensation,
+                       FT_Int      resolution )
   {
     FT_F26Dot6  val;
 
@@ -2021,6 +2045,7 @@
       if ( val > 0 )
         val = 0;
     }
+
     return val;
   }
 
@@ -2043,7 +2068,8 @@
   /*                                                                       */
   static FT_F26Dot6
   Round_To_Grid( EXEC_OP_ FT_F26Dot6  distance,
-                          FT_F26Dot6  compensation )
+                          FT_F26Dot6  compensation,
+                          FT_Int      resolution )
   {
     FT_F26Dot6  val;
 
@@ -2052,15 +2078,15 @@
 
     if ( distance >= 0 )
     {
-      val = distance + compensation + 32;
+      val = distance + compensation + 32 / resolution;
       if ( distance && val > 0 )
-        val &= ~63;
+        val &= ~(64 / resolution - 1);
       else
         val = 0;
     }
     else
     {
-      val = -FT_PIX_ROUND( compensation - distance );
+      val = -FT_PIX_ROUND_GRID( compensation - distance, resolution );
       if ( val > 0 )
         val = 0;
     }
@@ -2087,22 +2113,22 @@
   /*                                                                       */
   static FT_F26Dot6
   Round_To_Half_Grid( EXEC_OP_ FT_F26Dot6  distance,
-                               FT_F26Dot6  compensation )
+                               FT_F26Dot6  compensation,
+                               FT_Int      resolution )
   {
     FT_F26Dot6  val;
 
     FT_UNUSED_EXEC;
 
-
     if ( distance >= 0 )
     {
-      val = FT_PIX_FLOOR( distance + compensation ) + 32;
+      val = FT_PIX_FLOOR_GRID( distance + compensation, resolution ) + 32 / resolution;
       if ( distance && val < 0 )
         val = 0;
     }
     else
     {
-      val = -( FT_PIX_FLOOR( compensation - distance ) + 32 );
+      val = -( FT_PIX_FLOOR_GRID( compensation - distance, resolution ) + 32 / resolution );
       if ( val > 0 )
         val = 0;
     }
@@ -2129,7 +2155,8 @@
   /*                                                                       */
   static FT_F26Dot6
   Round_Down_To_Grid( EXEC_OP_ FT_F26Dot6  distance,
-                               FT_F26Dot6  compensation )
+                               FT_F26Dot6  compensation,
+                               FT_Int      resolution )
   {
     FT_F26Dot6  val;
 
@@ -2140,13 +2167,13 @@
     {
       val = distance + compensation;
       if ( distance && val > 0 )
-        val &= ~63;
+        val &= ~(64 / resolution - 1 );
       else
         val = 0;
     }
     else
     {
-      val = -( ( compensation - distance ) & -64 );
+      val = -( ( compensation - distance ) & -(64 / resolution) );
       if ( val > 0 )
         val = 0;
     }
@@ -2173,7 +2200,8 @@
   /*                                                                       */
   static FT_F26Dot6
   Round_Up_To_Grid( EXEC_OP_ FT_F26Dot6  distance,
-                             FT_F26Dot6  compensation )
+                             FT_F26Dot6  compensation,
+                             FT_Int      resolution )
   {
     FT_F26Dot6  val;
 
@@ -2182,15 +2210,15 @@
 
     if ( distance >= 0 )
     {
-      val = distance + compensation + 63;
+      val = distance + compensation + (64 / resolution - 1);
       if ( distance && val > 0 )
-        val &= ~63;
+        val &= ~(64 / resolution - 1);
       else
         val = 0;
     }
     else
     {
-      val = - FT_PIX_CEIL( compensation - distance );
+      val = - FT_PIX_CEIL_GRID( compensation - distance, resolution );
       if ( val > 0 )
         val = 0;
     }
@@ -2217,24 +2245,26 @@
   /*                                                                       */
   static FT_F26Dot6
   Round_To_Double_Grid( EXEC_OP_ FT_F26Dot6  distance,
-                                 FT_F26Dot6  compensation )
+                                 FT_F26Dot6  compensation,
+                                 FT_Int      resolution )
   {
     FT_F26Dot6 val;
 
     FT_UNUSED_EXEC;
 
 
-    if ( distance >= 0 )
+   if ( distance >= 0 )
     {
-      val = distance + compensation + 16;
+      val = distance + compensation + 16 / resolution ;
       if ( distance && val > 0 )
-        val &= ~31;
+        val &= ~(32 / resolution - 1);
       else
         val = 0;
     }
     else
     {
-      val = -FT_PAD_ROUND( compensation - distance, 32 );
+
+      val = -FT_PAD_ROUND( compensation - distance, 32 / resolution );
       if ( val > 0 )
         val = 0;
     }
@@ -2267,7 +2297,8 @@
   /*                                                                       */
   static FT_F26Dot6
   Round_Super( EXEC_OP_ FT_F26Dot6  distance,
-                        FT_F26Dot6  compensation )
+                        FT_F26Dot6  compensation,
+                        FT_Int      resolution )
   {
     FT_F26Dot6  val;
 
@@ -2315,7 +2346,8 @@
   /*                                                                       */
   static FT_F26Dot6
   Round_Super_45( EXEC_OP_ FT_F26Dot6  distance,
-                           FT_F26Dot6  compensation )
+                           FT_F26Dot6  compensation,
+                           FT_Int      resolution )
   {
     FT_F26Dot6  val;
 
@@ -2406,7 +2438,8 @@
   /*                                                                       */
   static void
   SetSuperRound( EXEC_OP_ FT_F26Dot6  GridPeriod,
-                          FT_Long     selector )
+                          FT_Long     selector,
+                          FT_Int      resolution )
   {
     switch ( (FT_Int)( selector & 0xC0 ) )
     {
@@ -3066,13 +3099,13 @@
 
 
 #define DO_SROUND                                \
-    SET_SuperRound( 0x4000, args[0] );           \
+    SET_SuperRound( 0x4000, args[0], 1 );        \
     CUR.GS.round_state = TT_Round_Super;         \
     CUR.func_round = (TT_Round_Func)Round_Super;
 
 
 #define DO_S45ROUND                                 \
-    SET_SuperRound( 0x2D41, args[0] );              \
+    SET_SuperRound( 0x2D41, args[0], 1 );           \
     CUR.GS.round_state = TT_Round_Super_45;         \
     CUR.func_round = (TT_Round_Func)Round_Super_45;
 
@@ -3233,11 +3266,11 @@
 
 
 #define DO_ODD                                                  \
-    args[0] = ( ( CUR_Func_round( args[0], 0 ) & 127 ) == 64 );
+    args[0] = ( ( CUR_Func_round( args[0], 0, 1 ) & 127 ) == 64 );
 
 
 #define DO_EVEN                                                \
-    args[0] = ( ( CUR_Func_round( args[0], 0 ) & 127 ) == 0 );
+    args[0] = ( ( CUR_Func_round( args[0], 0, 1 ) & 127 ) == 0 );
 
 
 #define DO_AND                        \
@@ -3286,7 +3319,31 @@
 #define DO_CEILING                    \
     args[0] = FT_PIX_CEIL( args[0] );
 
-
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+#define DO_RS                           \
+   {                                    \
+     FT_ULong  I = (FT_ULong)args[0];   \
+                                        \
+                                        \
+     if ( BOUNDSL( I, CUR.storeSize ) ) \
+     {                                  \
+       if ( CUR.pedantic_hinting )      \
+       {                                \
+         ARRAY_BOUND_ERROR;             \
+       }                                \
+       else                             \
+         args[0] = 0;                   \
+     }                                  \
+     else                               \
+       /* Subpixel Hinting - Avoid Typeman Dstroke and Istroke \
+        * and Vacuform Rounds */                               \
+       if ( CUR.enhanced                                       \
+            && ( I == 24 || I == 22 || I == 8 )                \
+            && !( CUR.sph_tweak_flags & SPH_TWEAK_DO_RS ) )    \
+         args[0] = 0;                   \
+       else args[0] = CUR.storage[I];   \
+   }
+#else
 #define DO_RS                           \
    {                                    \
      FT_ULong  I = (FT_ULong)args[0];   \
@@ -3304,6 +3361,7 @@
      else                               \
        args[0] = CUR.storage[I];        \
    }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
 
 #define DO_WS                           \
@@ -3383,12 +3441,12 @@
 #define DO_ROUND                                                   \
     args[0] = CUR_Func_round(                                      \
                 args[0],                                           \
-                CUR.tt_metrics.compensations[CUR.opcode - 0x68] );
+                CUR.tt_metrics.compensations[CUR.opcode - 0x68], 1 );
 
 
 #define DO_NROUND                                                            \
     args[0] = ROUND_None( args[0],                                           \
-                          CUR.tt_metrics.compensations[CUR.opcode - 0x6C] );
+                          CUR.tt_metrics.compensations[CUR.opcode - 0x6C], 1 );
 
 
 #define DO_MAX               \
@@ -4559,7 +4617,21 @@
     FT_ULong       n;
     TT_DefRecord*  rec;
     TT_DefRecord*  limit;
-
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    int opcode_pattern[4][12]= {
+          /* VacuFormRound function */
+          {0x45,0x23,0x46,0x60,0x20},
+          /* inline delta function 1 */
+          {0x4B,0x53,0x23,0x4B,0x51,0x5A,0x58,0x38,0x1B,0x21,0x21,0x59},
+          /* inline delta function 2 */
+          {0x4B,0x54,0x58,0x38,0x1B,0x5A,0x21,0x21,0x59},
+          /* diagonal stroke function */
+          {0x20,0x20,0x40,0x60,0x47,0x40,0x23,0x42},
+          };
+    int opcode_patterns = 4;
+    int i;
+    int opcode_pointer[4] = {0,0,0,0} ;
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
     /* some font programs are broken enough to redefine functions! */
     /* We will then parse the current table.                       */
@@ -4597,6 +4669,7 @@
     rec->opc    = (FT_UInt16)n;
     rec->start  = CUR.IP + 1;
     rec->active = TRUE;
+    rec->inline = FALSE;
 
     if ( n > CUR.maxFunc )
       CUR.maxFunc = (FT_UInt16)n;
@@ -4606,19 +4679,62 @@
 
     while ( SKIP_Code() == SUCCESS )
     {
+      /*printf ("%d ", CUR.opcode);*/
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+      for ( i = 0; i < opcode_patterns; i++ ){
+        if ( CUR.opcode == opcode_pattern[i][opcode_pointer[i]] )
+        {
+          /*printf ("function %d, opcode ptrn: %d  op# %d: %d FOUND -------------\n ", n, i, opcode_pointer[i], CUR.opcode);*/
+          opcode_pointer[i] += 1;
+
+          if (i == 0 && opcode_pointer[0] == 5){
+              /*inline_delta_funcs[CUR.num_delta_funcs] = n;
+              CUR.num_delta_funcs++;*/
+                /*printf ("Vacuform Round FUNCTION %d detected \n ", n);*/
+                if (CUR.enhanced) /*rec->active = FALSE;*/
+            opcode_pointer[i] = 0;
+          }
+          if (i == 1 && opcode_pointer[1] == 12){
+              /*rec->active = FALSE;*/
+              /*CUR.inline_delta_funcs[CUR.num_delta_funcs] = n;
+              CUR.num_delta_funcs++;*/
+             rec->inline = TRUE;
+                /*printf ("inline delta FUNCTION1 %d detected \n ", n, CUR.num_delta_funcs);*/
+            opcode_pointer[i] = 0;
+          }
+          if (i == 2 && opcode_pointer[1] == 9){
+             /* CUR.inline_delta_funcs[CUR.num_delta_funcs] = n;
+              CUR.num_delta_funcs++;*/
+             rec->inline = TRUE;
+                /*printf ("inline delta2 FUNCTION2 %d detected \n ", n, CUR.num_delta_funcs);*/
+            opcode_pointer[i] = 0;
+          }
+          if (i == 4 && opcode_pointer[1] == 8){
+             /* CUR.inline_delta_funcs[CUR.num_delta_funcs] = n;
+              CUR.num_delta_funcs++;*/
+             /*rec->inline = TRUE;*/
+                /*printf ("diagonal stroke function %d detected \n ", n, CUR.num_delta_funcs);*/
+            opcode_pointer[i] = 0;
+          }
+        }
+        else {
+          opcode_pointer[i]=0;
+        }
+      }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
+
       switch ( CUR.opcode )
       {
-      case 0x89:    /* IDEF */
-      case 0x2C:    /* FDEF */
-        CUR.error = TT_Err_Nested_DEFS;
-        return;
+        case 0x89:    /* IDEF */
+        case 0x2C:    /* FDEF */
+          CUR.error = TT_Err_Nested_DEFS;
+          return;
 
-      case 0x2D:   /* ENDF */
-        return;
+        case 0x2D:   /* ENDF */
+          return;
       }
     }
   }
-
 
   /*************************************************************************/
   /*                                                                       */
@@ -4647,6 +4763,13 @@
     pRec->Cur_Count--;
 
     CUR.step_ins = FALSE;
+
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    /* CUR.enhanced may be turned off prior to function calls.  This
+     * ensures it is turned back on.
+     */
+    CUR.enhanced = ( CUR.subpixel_hinting || CUR.grayscale_hinting );
+#endif /*TT_CONFIG_OPTION_SUBPIXEL_HINTING*/
 
     if ( pRec->Cur_Count > 0 )
     {
@@ -4680,8 +4803,9 @@
     FT_ULong       F;
     TT_CallRec*    pCrec;
     TT_DefRecord*  def;
-
-
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    FT_Bool       oldF;
+#endif /*TT_CONFIG_OPTION_SUBPIXEL_HINTING*/
     /* first of all, check the index */
 
     F = args[0];
@@ -4718,6 +4842,17 @@
     if ( !def->active )
       goto Fail;
 
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    /* This is test code used to detect inline delta functions */
+    oldF = def->inline;
+    if (CUR.enhanced)
+    {
+      if ( def->inline ) { CUR.infunc = TRUE; }
+    }
+
+     /* if ( F == 35 || F == 34 ){  CUR.enhanced = 0; printf ("ENTERING %d ", F); }*/
+#endif /*TT_CONFIG_OPTION_SUBPIXEL_HINTING*/
+
     /* check the call stack */
     if ( CUR.callTop >= CUR.callSize )
     {
@@ -4738,6 +4873,12 @@
                         def->start );
 
     CUR.step_ins = FALSE;
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    {
+      CUR.infunc = oldF; /*printf ("Leaving %d ", F);*/
+    }
+    /*if ( F == 35 || F == 34 ){  CUR.enhanced = 1; printf ("Leaving %d ", F); }*/
+#endif /*TT_CONFIG_OPTION_SUBPIXEL_HINTING*/
     return;
 
   Fail:
@@ -4757,7 +4898,9 @@
     FT_ULong       F;
     TT_CallRec*    pCrec;
     TT_DefRecord*  def;
-
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    FT_Bool       oldF;
+#endif /*TT_CONFIG_OPTION_SUBPIXEL_HINTING*/
 
     /* first of all, check the index */
     F = args[1];
@@ -4793,7 +4936,16 @@
     /* check that the function is active */
     if ( !def->active )
       goto Fail;
-
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    oldF=def->inline;
+    if (CUR.enhanced)
+    {
+      if ( def->inline )
+      {
+        CUR.infunc = TRUE;
+      }
+    }
+#endif /*TT_CONFIG_OPTION_SUBPIXEL_HINTING*/
     /* check stack */
     if ( CUR.callTop >= CUR.callSize )
     {
@@ -4816,6 +4968,11 @@
 
       CUR.step_ins = FALSE;
     }
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    {
+      CUR.infunc = oldF;
+    }
+#endif /*TT_CONFIG_OPTION_SUBPIXEL_HINTING*/
     return;
 
   Fail:
@@ -5159,6 +5316,10 @@
       }
     }
 
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    /* Disable Type 2 Vacuform Rounds - e.g. Arial Narrow */
+    if ( CUR.enhanced && FT_ABS(D) == 64) D += 1;
+#endif  /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
     args[0] = D;
   }
 
@@ -5639,13 +5800,21 @@
     }
 #endif
 
-    if ( CUR.GS.freeVector.x != 0 )
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    if ( !CUR.enhanced
+      || ( CUR.enhanced
+        && ( CUR.sph_tweak_flags & SPH_TWEAK_ALLOW_MOVEZP2_FREEV ) ))
     {
-      CUR.zp2.cur[point].x += dx;
-      if ( touch )
-        CUR.zp2.tags[point] |= FT_CURVE_TAG_TOUCH_X;
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
+      if ( CUR.GS.freeVector.x != 0 )
+      {
+        CUR.zp2.cur[point].x += dx;
+        if ( touch )
+          CUR.zp2.tags[point] |= FT_CURVE_TAG_TOUCH_X;
+      }
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
     }
-
+#endif
     if ( CUR.GS.freeVector.y != 0 )
     {
       CUR.zp2.cur[point].y += dy;
@@ -5653,7 +5822,6 @@
         CUR.zp2.tags[point] |= FT_CURVE_TAG_TOUCH_Y;
     }
   }
-
 
   /*************************************************************************/
   /*                                                                       */
@@ -5833,7 +6001,7 @@
   {
     FT_F26Dot6  dx, dy;
     FT_UShort   point;
-
+    FT_Int      B1, B2;
 
     if ( CUR.top < CUR.GS.loop + 1 )
     {
@@ -5877,11 +6045,64 @@
         }
       }
       else
-        MOVE_Zp2_Point( point, dx, dy, TRUE );
+      {
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+        /* The conditionals here still to not do a perfect job and need work.
+         *
+         * If not using enhanced rendering, allow ZP2 move.
+         *
+         * If using enhanced rendering, allow ZP2 point move if:
+         * - The glyph is composite
+         * - The glyph is specifically set to allow SHPIX moves
+         * - The move is in the Y direction on a previously touched point
+         *
+         * It seems that what qualifies as a previously touched point varies
+         * somewhat from font to font.  Some render better when either X or Y
+         * must be touched ( SPH_TWEAK_SHPIX_CLASS_A ) and some render better
+         * when both must be touched.
+         */
+
+        if ( CUR.enhanced )
+        {
+          B1 = CUR.zp2.cur[point].y;
+          if ( CUR.is_composite
+            || ( CUR.sph_tweak_flags & SPH_TWEAK_DO_SHPIX )
+            || ( /*CUR.infunc && !(CUR.sph_tweak_flags
+                 & SPH_TWEAK_SKIP_NONPIXEL_INLINE_MOVES) &&*/ /*CUR.infunc &&*/
+                 CUR.GS.freeVector.y != 0
+              && CUR.iup_called == 0
+              && CUR.iupy_called == 0
+              && (
+                   (  (CUR.sph_tweak_flags & SPH_TWEAK_SHPIX_CLASS_A )
+                      && (( CUR.pts.tags[point] & FT_CURVE_TAG_TOUCH_X ) != 0
+                       || ( CUR.pts.tags[point] & FT_CURVE_TAG_TOUCH_Y ) != 0 ))
+                || ( !(CUR.sph_tweak_flags & SPH_TWEAK_SHPIX_CLASS_A )
+                      && (( CUR.pts.tags[point] & FT_CURVE_TAG_TOUCH_X ) != 0
+                      &&  ( CUR.pts.tags[point] & FT_CURVE_TAG_TOUCH_Y ) != 0 ))
+                 )
+            /*|| !CUR.infunc*/ ) )
+           MOVE_Zp2_Point( point, dx, dy, TRUE );
+
+          B2 = CUR.zp2.cur[point].y;
+
+          /* Reverse moves that move the point off a pixel boundary */
+          if ((CUR.sph_tweak_flags & SPH_TWEAK_SKIP_NONPIXEL_INLINE_MOVES)
+               && B1 % 64 == 0
+               && B2 % 64 != 0 )
+          {
+            /*printf ("Reversing ZP2 move ");*/
+            MOVE_Zp2_Point( point, -dx, -dy, TRUE );
+          }
+        }
+        else
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
+          MOVE_Zp2_Point( point, dx, dy, TRUE );
+
+      }
 
       CUR.GS.loop--;
     }
-
+    /*printf("SHPIX:%d ", CUR.infunc);*/
     CUR.GS.loop = 1;
     CUR.new_top = CUR.args;
   }
@@ -5898,7 +6119,17 @@
   {
     FT_UShort   point;
     FT_F26Dot6  distance;
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    FT_Int      resolution = 1;
 
+    if ( CUR.enhanced )
+    {
+      if ( CUR.GS.freeVector.x != 0 )
+        resolution = Grids_Per_Pixel_X;
+      else if ( CUR.GS.freeVector.y != 0 )
+        resolution = Grids_Per_Pixel_Y;
+    }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
     point = (FT_UShort)args[0];
 
@@ -5922,6 +6153,15 @@
     distance = CUR_Func_project( CUR.zp1.cur + point,
                                  CUR.zp0.cur + CUR.GS.rp0 );
 
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    /* Subpixel Hinting - make MSIRP respect CVT cutin            */
+    /* Fixes "k" issue with Arial                                 */
+    if ( CUR.enhanced && CUR.GS.freeVector.x != 0
+      && FT_ABS( distance - args[1])
+         >= CUR.GS.control_value_cutin / resolution )
+      distance = args[1];
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
+
     CUR_Func_move( &CUR.zp1, point, args[1] - distance );
 
     CUR.GS.rp1 = CUR.GS.rp0;
@@ -5944,7 +6184,19 @@
     FT_UShort   point;
     FT_F26Dot6  cur_dist,
                 distance;
+    FT_Int      resolution = 1;
 
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+      if ( CUR.enhanced )
+      {
+        if ( CUR.GS.freeVector.x != 0
+          && !( CUR.sph_tweak_flags & SPH_TWEAK_NORMAL_ROUND_MDAP ))
+          resolution = Grids_Per_Pixel_X;
+        else if ( CUR.GS.freeVector.y != 0
+          && !( CUR.sph_tweak_flags & SPH_TWEAK_NORMAL_ROUND_MDAP ))
+          resolution = Grids_Per_Pixel_Y;
+      }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
     point = (FT_UShort)args[0];
 
@@ -5960,8 +6212,8 @@
     if ( ( CUR.opcode & 1 ) != 0 )
     {
       cur_dist = CUR_fast_project( &CUR.zp0.cur[point] );
-      distance = CUR_Func_round( cur_dist,
-                                 CUR.tt_metrics.compensations[0] ) - cur_dist;
+      distance =  CUR_Func_round( cur_dist,
+                                 CUR.tt_metrics.compensations[0], resolution ) - cur_dist;
     }
     else
       distance = 0;
@@ -5986,7 +6238,19 @@
     FT_UShort   point;
     FT_F26Dot6  distance,
                 org_dist;
+    FT_Int      resolution = 1;
 
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+      if ( CUR.enhanced )
+      {
+        if ( CUR.GS.freeVector.x != 0
+          && !( CUR.sph_tweak_flags & SPH_TWEAK_NORMAL_ROUND_MIAP ))
+          resolution = Grids_Per_Pixel_X;
+        else if ( CUR.GS.freeVector.y != 0
+          && !( CUR.sph_tweak_flags & SPH_TWEAK_NORMAL_ROUND_MIAP ))
+          resolution = Grids_Per_Pixel_Y;
+      }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
     cvtEntry = (FT_ULong)args[1];
     point    = (FT_UShort)args[0];
@@ -6034,10 +6298,13 @@
 
     if ( ( CUR.opcode & 1 ) != 0 )   /* rounding and control cutin flag */
     {
-      if ( FT_ABS( distance - org_dist ) > CUR.GS.control_value_cutin )
-        distance = org_dist;
-
-      distance = CUR_Func_round( distance, CUR.tt_metrics.compensations[0] );
+      {
+        if ( FT_ABS( distance - org_dist )
+           > CUR.GS.control_value_cutin / resolution )
+          distance = org_dist;
+        distance = CUR_Func_round( distance,
+                                   CUR.tt_metrics.compensations[0], resolution );
+      }
     }
 
     CUR_Func_move( &CUR.zp0, point, distance - org_dist );
@@ -6058,6 +6325,24 @@
   {
     FT_UShort   point;
     FT_F26Dot6  org_dist, distance;
+    FT_Int      minimum_distance_factor = 64;
+    FT_Int      resolution = 1;
+
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+      if ( CUR.enhanced )
+      {
+        if ( CUR.GS.freeVector.x != 0
+          && !( CUR.sph_tweak_flags & SPH_TWEAK_NORMAL_ROUND_MDRP ))
+        {
+          resolution = Grids_Per_Pixel_X;
+          minimum_distance_factor = 64 - resolution / 3;
+        }
+        else if ( CUR.GS.freeVector.y != 0
+          && !( CUR.sph_tweak_flags & SPH_TWEAK_NORMAL_ROUND_MDRP ))
+          resolution = Grids_Per_Pixel_Y;
+
+      }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
 
     point = (FT_UShort)args[0];
@@ -6121,13 +6406,15 @@
     /* round flag */
 
     if ( ( CUR.opcode & 4 ) != 0 )
+    {
       distance = CUR_Func_round(
                    org_dist,
-                   CUR.tt_metrics.compensations[CUR.opcode & 3] );
+                   CUR.tt_metrics.compensations[CUR.opcode & 3], resolution );
+    }
     else
       distance = ROUND_None(
                    org_dist,
-                   CUR.tt_metrics.compensations[CUR.opcode & 3] );
+                   CUR.tt_metrics.compensations[CUR.opcode & 3], resolution );
 
     /* minimum distance flag */
 
@@ -6135,13 +6422,17 @@
     {
       if ( org_dist >= 0 )
       {
-        if ( distance < CUR.GS.minimum_distance )
-          distance = CUR.GS.minimum_distance;
+        if ( distance < FT_MulDiv(minimum_distance_factor,
+             CUR.GS.minimum_distance, 64) )
+          distance = FT_MulDiv(minimum_distance_factor,
+          CUR.GS.minimum_distance, 64);
       }
       else
       {
-        if ( distance > -CUR.GS.minimum_distance )
-          distance = -CUR.GS.minimum_distance;
+        if ( distance > -FT_MulDiv( minimum_distance_factor,
+             CUR.GS.minimum_distance, 64 ) )
+          distance = -FT_MulDiv( minimum_distance_factor,
+             CUR.GS.minimum_distance, 64 );
       }
     }
 
@@ -6177,9 +6468,29 @@
                 cur_dist,
                 org_dist;
 
+    FT_Int      minimum_distance_factor = 64;
+    FT_Int      B1, B2, resolution = 1;
 
     point    = (FT_UShort)args[0];
     cvtEntry = (FT_ULong)( args[1] + 1 );
+
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+      if ( CUR.enhanced )
+      {
+        if ( CUR.GS.freeVector.x != 0
+          && !( CUR.sph_tweak_flags & SPH_TWEAK_NORMAL_ROUND_MIRP ))
+        {
+          resolution = Grids_Per_Pixel_X;
+          /* High value emboldens glyphs at lower ppems ( < 14 ) */
+          /* Courier looks better with 52 */
+          /* MS Cleartype Rasterizer supposedly uses 32 */
+          minimum_distance_factor = 64 - resolution / 3;
+        }
+        else if ( CUR.GS.freeVector.y != 0
+          && !( CUR.sph_tweak_flags & SPH_TWEAK_NORMAL_ROUND_MIRP ))
+          resolution = Grids_Per_Pixel_Y;
+      }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
     /* XXX: UNDOCUMENTED! cvt[-1] = 0 always */
 
@@ -6244,35 +6555,54 @@
       /*      refer to the same zone.                                  */
 
       if ( CUR.GS.gep0 == CUR.GS.gep1 )
-        if ( FT_ABS( cvt_dist - org_dist ) >= CUR.GS.control_value_cutin )
+        if ( FT_ABS( cvt_dist - org_dist ) >= CUR.GS.control_value_cutin / resolution )
           cvt_dist = org_dist;
 
       distance = CUR_Func_round(
                    cvt_dist,
-                   CUR.tt_metrics.compensations[CUR.opcode & 3] );
+                   CUR.tt_metrics.compensations[CUR.opcode & 3], resolution );
     }
     else
       distance = ROUND_None(
                    cvt_dist,
-                   CUR.tt_metrics.compensations[CUR.opcode & 3] );
+                   CUR.tt_metrics.compensations[CUR.opcode & 3], resolution  );
 
     /* minimum distance test */
-
     if ( ( CUR.opcode & 8 ) != 0 )
     {
       if ( org_dist >= 0 )
       {
-        if ( distance < CUR.GS.minimum_distance )
-          distance = CUR.GS.minimum_distance;
+        if ( distance < FT_MulDiv( minimum_distance_factor,
+             CUR.GS.minimum_distance, 64 ) )
+          distance = FT_MulDiv( minimum_distance_factor,
+             CUR.GS.minimum_distance, 64 );
       }
       else
       {
-        if ( distance > -CUR.GS.minimum_distance )
-          distance = -CUR.GS.minimum_distance;
+        if ( distance > -FT_MulDiv( minimum_distance_factor,
+             CUR.GS.minimum_distance, 64 ) )
+          distance = -FT_MulDiv( minimum_distance_factor,
+             CUR.GS.minimum_distance, 64 );
       }
     }
 
+    B1 = CUR.zp1.cur[point].y;
+
     CUR_Func_move( &CUR.zp1, point, distance - cur_dist );
+
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    if ( CUR.enhanced && CUR.sph_tweak_flags & SPH_TWEAK_SKIP_NONPIXEL_INLINE_MOVES)
+    {
+      B2 = CUR.zp1.cur[point].y;
+
+      if ( ( CUR.GS.freeVector.x != 0 && B1 % 64 == 0 && B2 % 64 != 0 )
+        || ( CUR.GS.freeVector.y != 0 && B2 % 64 != 0 ) )
+      {
+        /* reverse the MIRP move.  Ideally this could be implemented better */
+        CUR_Func_move( &CUR.zp1, point, -(distance - cur_dist) );
+      }
+    }
+#endif /*TT_CONFIG_OPTION_SUBPIXEL_HINTING*/
 
     CUR.GS.rp1 = CUR.GS.rp0;
 
@@ -6765,6 +7095,14 @@
     contour = 0;
     point   = 0;
 
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    if ( CUR.enhanced )
+    {
+      CUR.iup_called = 1;
+      if ( CUR.sph_tweak_flags & SPH_TWEAK_SKIP_IUP ) return;
+    }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
+
     do
     {
       end_point   = CUR.pts.contours[contour] - CUR.pts.first_point;
@@ -6834,7 +7172,19 @@
     FT_UShort  A;
     FT_ULong   C;
     FT_Long    B;
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    FT_Byte    orig_round_state;
+    FT_Int     resolution = 1;
+    FT_UShort  B1, B2;
 
+    if (CUR.enhanced )
+    {
+      if ( CUR.GS.freeVector.x != 0 )
+        resolution = Grids_Per_Pixel_X;
+      else if ( CUR.GS.freeVector.y != 0 )
+        resolution = Grids_Per_Pixel_Y;
+    }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
 #ifdef TT_CONFIG_OPTION_UNPATENTED_HINTING
     /* Delta hinting is covered by US Patent 5159668. */
@@ -6903,8 +7253,81 @@
           if ( B >= 0 )
             B++;
           B = B * 64 / ( 1L << CUR.GS.delta_shift );
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING_ADDITIONAL_TWEAKS
+          /* Undocumented hack that will round the point prior to or instead
+           * of the delta move.  Fixes glitches in various fonts due to bad
+           * y-hinting routines.
+           */
+          if ( CUR.enhanced && CUR.GS.freeVector.y != 0 )
+          {
+            orig_round_state= CUR.GS.round_state;
 
+            if ( CUR.sph_tweak_flags & SPH_TWEAK_DELTAP_RDTG  )
+            {
+              COMPUTE_Round( TT_Round_Down_To_Grid );
+              B = CUR_Func_round( B, CUR.tt_metrics.compensations[0], 1 );
+            }
+
+            else if ( CUR.sph_tweak_flags & SPH_TWEAK_DELTAP_RUTG )
+            {
+              COMPUTE_Round( TT_Round_Up_To_Grid );
+              B = CUR_Func_round( B, CUR.tt_metrics.compensations[0], 1  );
+            }
+
+            else if ( CUR.sph_tweak_flags & SPH_TWEAK_DELTAP_RTG  )
+            {
+              COMPUTE_Round( TT_Round_To_Grid );
+              B = CUR_Func_round( B, CUR.tt_metrics.compensations[0], 1  );
+            }
+
+            COMPUTE_Round( orig_round_state );
+          }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING_ADDITIONAL_TWEAKS */
+
+          /* Allow delta move if:
+           * - Not using enhanced rendering
+           * - Glyph is specifically set to allow it
+           * - Glyph is composite
+           */
+          if ( !CUR.enhanced
+            || CUR.sph_tweak_flags & SPH_TWEAK_ALWAYS_DO_DELTAP
+            || CUR.is_composite )
+            CUR_Func_move( &CUR.zp0, A, B );
+
+          else if ( !( CUR.sph_tweak_flags & SPH_TWEAK_ALWAYS_SKIP_DELTAP ) )
+          {
+            /* Save the y value of the point now. Compare after move */
+            B1 = CUR.zp0.cur[A].y;
+
+            /* Allow delta move if using enhanced rendering, IUP has not
+             * been called, and point is touched on X or Y.
+             *
+             * Working code, but needs more features.
+             */
+            if ( CUR.enhanced && CUR.GS.freeVector.y != 0
+                 && CUR.iup_called == 0 && CUR.iupy_called == 0
+                 && (  ( CUR.pts.tags[A] & FT_CURVE_TAG_TOUCH_X ) != 0
+                    || ( CUR.pts.tags[A] & FT_CURVE_TAG_TOUCH_Y ) != 0 ) )
+              /* Should resolution always be 1 for this move ??? */
+              CUR_Func_move( &CUR.zp0, A, B );
+
+            B2 = CUR.zp0.cur[A].y;
+
+            /* Reverse this move if it results in a move off a pixel
+             * boundary.
+             */
+            if ( ( CUR.sph_tweak_flags & SPH_TWEAK_SKIP_NONPIXEL_INLINE_MOVES )
+              && B1 % 64 == 0
+              && B2 % 64 != 0 )
+            {
+              CUR_Func_move( &CUR.zp0, A, -B );
+            }
+
+          }
+#else
           CUR_Func_move( &CUR.zp0, A, B );
+#endif /* *TT_CONFIG_OPTION_SUBPIXEL_HINTING */
         }
       }
       else
@@ -7029,21 +7452,99 @@
 
     K = 0;
 
-    /* We return MS rasterizer version 1.7 for the font scaler. */
-    if ( ( args[0] & 1 ) != 0 )
-      K = 35;
-
-    /* Has the glyph been rotated? */
+    /********************************/
+    /* RASTERIZER VERSION           */
+    /* Selector Bit:  0             */
+    /* Return Bit(s): 0-7           */
+    /*                              */
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    if ( ( args[0] & 1 ) != 0
+      && CUR.enhanced
+      && !( CUR.sph_tweak_flags & SPH_TWEAK_RASTERIZER_35 ) ){
+      K = CUR.rasterizer_version; /*printf (" SETTING AS 37 \n" );*/ }
+    else
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
+    if ( ( args[0] & 1 ) != 0 ){
+      K = 35; /*printf (" SETTING AS 35 \n" );*/
+    }
+    /********************************/
+    /* GLYPH ROTATED                */
+    /* Selector Bit:  1             */
+    /* Return Bit(s): 8             */
+    /*                              */
     if ( ( args[0] & 2 ) != 0 && CUR.tt_metrics.rotated )
-      K |= 0x80;
-
-    /* Has the glyph been stretched? */
-    if ( ( args[0] & 4 ) != 0 && CUR.tt_metrics.stretched )
       K |= 1 << 8;
 
-    /* Are we hinting for grayscale? */
+    /********************************/
+    /* GLYPH STRETCHED              */
+    /* Selector Bit:  2             */
+    /* Return Bit(s): 9             */
+    /*                              */
+    if ( ( args[0] & 4 ) != 0 && CUR.tt_metrics.stretched )
+      /*K |= 1 << 8;  Original value appears to be incorrect?? */
+      K |= 1 << 9;
+
+    /********************************/
+    /* HINTING FOR GRAYSCALE        */
+    /* Selector Bit:  5             */
+    /* Return Bit(s): 12            */
+    /*                              */
     if ( ( args[0] & 32 ) != 0 && CUR.grayscale )
       K |= 1 << 12;
+
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    if ( CUR.enhanced && !( CUR.sph_tweak_flags & SPH_TWEAK_RASTERIZER_35 ) )
+    {
+      /********************************/
+      /* HINTING FOR GRAYSCALE        */
+      /* Selector Bit:  5             */
+      /* Return Bit(s): 12            */
+      /*                              */
+      if ( ( args[0] & 32 ) != 0 && CUR.grayscale_hinting )
+        K |= 1 << 12;
+
+      /********************************/
+      /* HINTING FOR SUBPIXEL         */
+      /* Selector Bit:  6             */
+      /* Return Bit(s): 13            */
+      /*                              */
+      if ( ( args[0] & 64 ) != 0 && CUR.subpixel_hinting )
+      {
+        K |= 1 << 13;
+
+        /* The below are irrelevant if subpixel_hinting is not set */
+
+        /********************************/
+        /* COMPATIBLE WIDTHS ENABLED    */
+        /* Selector Bit:  7             */
+        /* Return Bit(s): 14            */
+        /*                              */
+        /* Functionality still needs to be added */
+        if ( ( args[0] & 128 ) != 0 && CUR.compatible_widths )
+        {
+          K |= 1 << 14;
+        }
+
+        /********************************/
+        /* SYMMETRICAL SMOOTHING        */
+        /* Selector Bit:  8             */
+        /* Return Bit(s): 15            */
+        /*                              */
+        /* Functionality still needs to be added */
+        if ( ( args[0] & 256 ) != 0 && CUR.symmetrical_smoothing )
+          K |= 1 << 15;
+
+        /********************************/
+        /* HINTING FOR BGR?             */
+        /* Selector Bit:  9             */
+        /* Return Bit(s): 16            */
+        /*                              */
+        /* Functionality still needs to be added */
+        if ( ( args[0] & 512 ) != 0 && CUR.bgr )
+          K |= 1 << 16;
+      }
+    }
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
     args[0] = K;
   }
@@ -7419,6 +7920,14 @@
     cur = *exc;
 #endif
 
+
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    /* Ensure some variables are set for this run */
+    CUR.iup_called = FALSE;
+    CUR.iupy_called = FALSE;
+    CUR.infunc = FALSE;
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
+
     /* set CVT functions */
     CUR.tt_metrics.ratio = 0;
     if ( CUR.metrics.x_ppem != CUR.metrics.y_ppem )
@@ -7697,8 +8206,16 @@
 
 
         case 0x30:  /* IUP */
+          Ins_IUP( EXEC_ARG_ args );
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+          CUR.iup_called = TRUE;
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
+          break;
         case 0x31:  /* IUP */
           Ins_IUP( EXEC_ARG_ args );
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+          CUR.iupy_called = TRUE;
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING*/
           break;
 
         case 0x32:  /* SHP */

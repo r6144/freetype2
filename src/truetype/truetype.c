@@ -27,6 +27,7 @@
 
 #ifdef TT_USE_BYTECODE_INTERPRETER
 #include "ttinterp.c"
+#include "ttsubpixel.c"
 #endif
 
 #ifdef TT_CONFIG_OPTION_GX_VAR_SUPPORT

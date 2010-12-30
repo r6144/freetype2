@@ -68,7 +68,8 @@ FT_BEGIN_HEADER
   /* Rounding function */
   typedef FT_F26Dot6
   (*TT_Round_Func)( EXEC_OP_ FT_F26Dot6  distance,
-                             FT_F26Dot6  compensation );
+                             FT_F26Dot6  compensation,
+                             FT_Int      resolution );
 
   /* Point displacement along the freedom vector routine */
   typedef void
@@ -104,6 +105,24 @@ FT_BEGIN_HEADER
     FT_Long  Cur_Restart;
 
   } TT_CallRec, *TT_CallStack;
+
+
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+  /*************************************************************************/
+  /*                                                                       */
+  /* This structure defines a rule used to tweak subpixel hinting for      */
+  /* various fonts.  "", 0, "", NULL value indicates to match any value.   */
+  /*                                                                       */
+
+  typedef struct  SPH_TweakRule_
+  {
+    const char      family[32];
+    const int       ppem;
+    const char      style[32];
+    const char      glyph;
+  } SPH_TweakRule;
+
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
 
   /*************************************************************************/
@@ -215,7 +234,32 @@ FT_BEGIN_HEADER
     TT_Set_CVT_Func    func_write_cvt; /* write a cvt entry (in pixels) */
     TT_Set_CVT_Func    func_move_cvt;  /* incr a cvt entry (in pixels)  */
 
-    FT_Bool            grayscale;      /* are we hinting for grayscale? */
+    FT_Bool            grayscale;         /* are we hinting for grayscale?  */
+
+#ifdef TT_CONFIG_OPTION_SUBPIXEL_HINTING
+    TT_Round_Func      func_round_sphn;   /* subpixel rounding fuction      */
+
+    FT_Bool            grayscale_hinting;  /* are we hinting for subpixel?   */
+    FT_Bool            subpixel_hinting;   /* are we hinting for subpixel?   */
+    FT_Bool            enhanced;         /* are we using enhanced rendering? */
+                                /* ( grayscale_hinting || subpixel_hinting ) */
+    FT_Bool            native_hinting;    /* do native hinting when true */
+    /* the following 3 are unimplemented but here for future reference */
+
+    FT_Bool            compatible_widths; /* are we using compatible widths?*/
+    FT_Bool            symmetrical_smoothing; /* symmetrical_smoothing?     */
+    FT_Bool            bgr;               /* are we using bgr, not rgb?     */
+    FT_Int             rasterizer_version;/* return ms rasterizer version   */
+
+    FT_Bool            iup_called;        /* IUP[x] been called for glyph?   */
+    FT_Bool            iupy_called;       /* IUP[y] been called for glyph?   */
+    FT_Bool            infunc;            /* inside an inline delta func?    */
+
+    FT_ULong           sph_tweak_flags;   /* flags to control hint tweaks   */
+
+    FT_Int             num_delta_funcs;
+    FT_ULong           inline_delta_funcs[5];
+#endif /* TT_CONFIG_OPTION_SUBPIXEL_HINTING */
 
   } TT_ExecContextRec;
 

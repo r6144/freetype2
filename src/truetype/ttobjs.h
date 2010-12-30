@@ -177,6 +177,7 @@ FT_BEGIN_HEADER
     FT_Long  start;      /* where does it start?               */
     FT_UInt  opc;        /* function #, or instruction code    */
     FT_Bool  active;     /* is it active?                      */
+    FT_Bool  inline;     /* function that defines inline delta */
 
   } TT_DefRecord, *TT_DefArray;
 
