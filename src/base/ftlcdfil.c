@@ -945,19 +945,23 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
     if ( checked_filter_params_env == 0 )
     {
       char *filter_params = getenv( "INFINALITY_FT_FILTER_PARAMS" );
-      if ( filter_params != NULL )
+      if ( filter_params != NULL && strcmp(filter_params, "") != 0 )
       {
         float f1, f2, f3, f4, f5;
 
         if ( strcasecmp(filter_params, "default" ) != 0)
         {
-          sscanf ( filter_params, "%f %f %f %f %f", &f1, &f2, &f3, &f4, &f5 );
+          int args_assigned = 0;
+          args_assigned = sscanf ( filter_params, "%f %f %f %f %f", &f1, &f2, &f3, &f4, &f5 );
 
-          default_filter[0] = (FT_Byte) (f1 * 255.0f + 0.5f);
-          default_filter[1] = (FT_Byte) (f2 * 255.0f + 0.5f);
-          default_filter[2] = (FT_Byte) (f3 * 255.0f + 0.5f);
-          default_filter[3] = (FT_Byte) (f4 * 255.0f + 0.5f);
-          default_filter[4] = (FT_Byte) (f5 * 255.0f + 0.5f);
+          if ( args_assigned == 5 )
+          {
+            default_filter[0] = (FT_Byte) (f1 * 255.0f + 0.5f);
+            default_filter[1] = (FT_Byte) (f2 * 255.0f + 0.5f);
+            default_filter[2] = (FT_Byte) (f3 * 255.0f + 0.5f);
+            default_filter[3] = (FT_Byte) (f4 * 255.0f + 0.5f);
+            default_filter[4] = (FT_Byte) (f5 * 255.0f + 0.5f);
+          }
         }
       }
       checked_filter_params_env = 1;
