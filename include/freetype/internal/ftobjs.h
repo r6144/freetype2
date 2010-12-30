@@ -770,6 +770,10 @@ FT_BEGIN_HEADER
                                             FT_Library      library );
 
 
+  typedef void  (*FT_Bitmap_LcdStemAlignFunc)( FT_Bitmap*      bitmap,
+                                               FT_Render_Mode  render_mode,
+                                               FT_GlyphSlot       slot );
+
   /*************************************************************************/
   /*                                                                       */
   /* <Struct>                                                              */
@@ -870,6 +874,7 @@ FT_BEGIN_HEADER
     FT_Int                   lcd_extra;        /* number of extra pixels */
     FT_Byte                  lcd_weights[7];   /* filter weights, if any */
     FT_Bitmap_LcdFilterFunc  lcd_filter_func;  /* filtering callback     */
+    FT_Bitmap_LcdStemAlignFunc  lcd_stem_align_func;
 #endif
 
 #ifdef FT_CONFIG_OPTION_PIC

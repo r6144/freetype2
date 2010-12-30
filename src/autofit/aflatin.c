@@ -21,6 +21,7 @@
 
 #include "aflatin.h"
 #include "aferrors.h"
+#include "strings.h"
 
 
 #ifdef AF_USE_WARPER
@@ -495,6 +496,29 @@
     AF_LatinAxis  axis;
     FT_UInt       nn;
 
+    int checked_adjust_heights_env = 0;
+    FT_Bool adjust_heights = FALSE;
+
+    if ( checked_adjust_heights_env == 0 )
+    {
+      char *adjust_heights_env = getenv( "INFINALITY_FT_AUTOFIT_ADJUST_HEIGHTS" );
+      if ( adjust_heights_env != NULL )
+      {
+        if ( strcasecmp(adjust_heights_env, "default" ) != 0 )
+        {
+          if ( strcasecmp(adjust_heights_env, "true") == 0)
+            adjust_heights = TRUE;
+          else if ( strcasecmp(adjust_heights_env, "1") == 0)
+            adjust_heights = TRUE;
+          else if ( strcasecmp(adjust_heights_env, "on") == 0)
+            adjust_heights = TRUE;
+          else if ( strcasecmp(adjust_heights_env, "yes") == 0)
+            adjust_heights = TRUE;
+        }
+      }
+      checked_adjust_heights_env = 1;
+    }
+
 
     if ( dim == AF_DIMENSION_HORZ )
     {
@@ -522,21 +546,46 @@
     {
       AF_LatinAxis  Axis = &metrics->axis[AF_DIMENSION_VERT];
       AF_LatinBlue  blue = NULL;
-
+      int threshold = 40;
 
       for ( nn = 0; nn < Axis->blue_count; nn++ )
       {
-        if ( Axis->blues[nn].flags & AF_LATIN_BLUE_ADJUSTMENT )
+        if ( Axis->blues[nn].flags & AF_LATIN_BLUE_ADJUSTMENT
+          || ( adjust_heights && Axis->blues[nn].flags & AF_LATIN_BLUE_TOP )
+        )
         {
           blue = &Axis->blues[nn];
           break;
         }
       }
 
+      if ( adjust_heights
+        && metrics->root.scaler.face->size->metrics.x_ppem < 15
+        && metrics->root.scaler.face->size->metrics.x_ppem > 8 )
+        threshold = 52;
+
+      /* NEED TO FIND A WAY TO ADJUST CAPS AND LOWER SEPARATELY */
+      /* The below does not work */
+      /*  if (Axis->blues[nn].flags & AF_LATIN_BLUE_SMALL_TOP )
+        {
+          if (metrics->root.scaler.face->size->metrics.x_ppem < 15)
+            threshold = 22;
+          else threshold = 40;
+          break;
+        }
+        if ( Axis->blues[nn].flags & AF_LATIN_BLUE_CAPITAL_TOP )
+        {
+          if (metrics->root.scaler.face->size->metrics.x_ppem < 15)
+            threshold = 40;
+          else threshold = 40;
+          break;
+        }
+      */
+
       if ( blue )
       {
         FT_Pos  scaled = FT_MulFix( blue->shoot.org, scaler->y_scale );
-        FT_Pos  fitted = ( scaled + 40 ) & ~63;
+        FT_Pos  fitted = ( scaled + threshold ) & ~63;
 
 
         if ( scaled != fitted )
@@ -1340,7 +1389,8 @@
               if ( dist < 0 )
                 dist = -dist;
 
-              dist = FT_MulFix( dist, scale );
+              /* round down to pixels */
+              dist = FT_MulFix( dist, scale ) & ~63;
               if ( dist < best_dist )
               {
                 best_dist = dist;
@@ -1500,9 +1550,33 @@
     FT_Int           vertical = ( dim == AF_DIMENSION_VERT );
 
 
-    if ( !AF_LATIN_HINTS_DO_STEM_ADJUST( hints ) ||
-          axis->extra_light                      )
-      return width;
+    int checked_stem_snap_env = 0;
+    FT_Bool stem_snap_light = FALSE;
+
+    if ( checked_stem_snap_env == 0 )
+    {
+      char *stem_snap_env = getenv( "INFINALITY_FT_AUTOFIT_STEM_SNAP_LIGHT" );
+      if ( stem_snap_env != NULL )
+      {
+        if ( strcasecmp(stem_snap_env, "default" ) != 0 )
+        {
+          if ( strcasecmp(stem_snap_env, "true") == 0)
+            stem_snap_light = TRUE;
+          else if ( strcasecmp(stem_snap_env, "1") == 0)
+            stem_snap_light = TRUE;
+          else if ( strcasecmp(stem_snap_env, "on") == 0)
+            stem_snap_light = TRUE;
+          else if ( strcasecmp(stem_snap_env, "yes") == 0)
+            stem_snap_light = TRUE;
+        }
+      }
+      checked_stem_snap_env = 1;
+    }
+
+    if ( !stem_snap_light )
+      if ( !AF_LATIN_HINTS_DO_STEM_ADJUST( hints ) ||
+            axis->extra_light                      )
+        return width;
 
     if ( dist < 0 )
     {
@@ -1510,8 +1584,67 @@
       sign = 1;
     }
 
-    if ( (  vertical && !AF_LATIN_HINTS_DO_VERT_SNAP( hints ) ) ||
-         ( !vertical && !AF_LATIN_HINTS_DO_HORZ_SNAP( hints ) ) )
+    if ( stem_snap_light
+      && (
+           ( vertical && !AF_LATIN_HINTS_DO_VERT_SNAP( hints ) )
+      ||   ( !vertical && !AF_LATIN_HINTS_DO_HORZ_SNAP( hints ) ) ) )
+    {
+      dist = af_latin_snap_width( axis->widths, axis->width_count, dist );
+
+      if ( metrics->root.scaler.face->size->metrics.x_ppem > 9
+        && axis->width_count > 0
+        && abs ( axis->widths[0].cur - dist ) < 32
+        && axis->widths[0].cur > 52 )
+      {
+        if ( strstr(metrics->root.scaler.face->style_name, "Regular")
+          || strstr(metrics->root.scaler.face->style_name, "Book")
+          || strstr(metrics->root.scaler.face->style_name, "Medium")
+          || strcmp(metrics->root.scaler.face->style_name, "Italic") == 0
+          || strcmp(metrics->root.scaler.face->style_name, "Oblique") == 0 )
+        {
+          /* regular weight */
+          if ( axis->widths[0].cur < 64 ) dist = 64 ;
+          else if (axis->widths[0].cur  < 88) dist = 64;
+          else if (axis->widths[0].cur  < 160) dist = 128;
+          else if (axis->widths[0].cur  < 240) dist = 190;
+          else dist = ( dist ) & ~63;
+        }
+        else
+        {
+          /* bold gets a different threshold */
+          if ( axis->widths[0].cur < 64 ) dist = 64 ;
+          else if (axis->widths[0].cur  < 108) dist = 64;
+          else if (axis->widths[0].cur  < 160) dist = 128;
+          else if (axis->widths[0].cur  < 222) dist = 190;
+          else if (axis->widths[0].cur  < 288) dist = 254;
+          else dist = ( dist + 16 ) & ~63;
+        }
+
+        /* fix any unusually low values */
+        if (dist < ( axis->widths[0].cur & ~63 ) )
+          dist = (axis->widths[0].cur & ~63);
+
+        /* fix any unusually high values */
+        if (dist > ( ( axis->widths[0].cur + 64 ) & ~63 ) )
+          dist = ( ( axis->widths[0].cur + 64 ) & ~63 );
+
+        if (dist < 64 ) dist = 64 ;
+
+      }
+      if (dist < 52)
+      {
+        if (metrics->root.scaler.face->size->metrics.x_ppem < 9 )
+        {
+          /*dist = 64 - (64 - dist) / 2 ;*/
+          if (dist < 31) dist = 31;
+        }
+        else
+          dist = 52;
+      }
+
+    }
+    else if ( !stem_snap_light && (( vertical && !AF_LATIN_HINTS_DO_VERT_SNAP( hints ) ) ||
+         ( !vertical && !AF_LATIN_HINTS_DO_HORZ_SNAP( hints ) ) ) )
     {
       /* smooth hinting process: very lightly quantize the stem width */
 
@@ -1569,13 +1702,15 @@
           dist = ( dist + 32 ) & ~63;
       }
     }
-    else
+    else if (!stem_snap_light)
     {
       /* strong hinting process: snap the stem width to integer pixels */
       FT_Pos  org_dist = dist;
 
 
       dist = af_latin_snap_width( axis->widths, axis->width_count, dist );
+
+      if ( stem_snap_light ) goto Done_Width;
 
       if ( vertical )
       {
@@ -2100,7 +2235,30 @@
   {
     FT_Error  error;
     int       dim;
+    int       e_strength = 0;
 
+    int checked_embolden_light_env = 0;
+    FT_Bool embolden_light = FALSE;
+
+    if ( checked_embolden_light_env == 0 )
+    {
+      char *embolden_light_env = getenv( "INFINALITY_FT_AUTOFIT_EMBOLDEN_LIGHT" );
+      if ( embolden_light_env != NULL )
+      {
+        if ( strcasecmp(embolden_light_env, "default" ) != 0 )
+        {
+          if ( strcasecmp(embolden_light_env, "true") == 0)
+            embolden_light = TRUE;
+          else if ( strcasecmp(embolden_light_env, "1") == 0)
+            embolden_light = TRUE;
+          else if ( strcasecmp(embolden_light_env, "on") == 0)
+            embolden_light = TRUE;
+          else if ( strcasecmp(embolden_light_env, "yes") == 0)
+            embolden_light = TRUE;
+        }
+      }
+      checked_embolden_light_env = 1;
+    }
 
     error = af_glyph_hints_reload( hints, outline );
     if ( error )
@@ -2146,8 +2304,15 @@
       }
 #endif
 
-      if ( ( dim == AF_DIMENSION_HORZ && AF_HINTS_DO_HORIZONTAL( hints ) ) ||
-           ( dim == AF_DIMENSION_VERT && AF_HINTS_DO_VERTICAL( hints ) )   )
+      if ( ( dim == AF_DIMENSION_HORZ && AF_HINTS_DO_HORIZONTAL( hints ) ) )
+      {
+        af_latin_hint_edges( hints, (AF_Dimension)dim );
+        af_glyph_hints_align_edge_points( hints, (AF_Dimension)dim );
+        af_glyph_hints_align_strong_points( hints, (AF_Dimension)dim );
+        af_glyph_hints_align_weak_points( hints, (AF_Dimension)dim );
+      }
+
+      if ( ( dim == AF_DIMENSION_VERT && AF_HINTS_DO_VERTICAL( hints ) )   )
       {
         af_latin_hint_edges( hints, (AF_Dimension)dim );
         af_glyph_hints_align_edge_points( hints, (AF_Dimension)dim );
@@ -2156,6 +2321,34 @@
       }
     }
     af_glyph_hints_save( hints, outline );
+
+    /* if the font is particularly thin, embolden it, up to 1 px */
+    if ( embolden_light
+      && metrics->axis->widths[0].cur <= 80
+      && !( dim == AF_DIMENSION_VERT )
+      && !AF_LATIN_HINTS_DO_HORZ_SNAP( hints ) )
+    {
+      if ( metrics->axis->widths[0].cur
+        / metrics->root.scaler.face->size->metrics.x_ppem < 5 )
+      {
+        /* weakest at width 80, stronger at lower widths */
+        e_strength = 40 * ( 80 - metrics->axis->widths[0].cur)/80 ;
+        /* Don't do low ppems as much */
+        if ( metrics->root.scaler.face->size->metrics.x_ppem < 9 )
+          e_strength -=
+            ( 9 - metrics->root.scaler.face->size->metrics.x_ppem ) * 10;
+      }
+
+      /* Embolden small fonts on a sliding scale. Better readability. */
+      if ( e_strength > 0
+        && ( strstr(metrics->root.scaler.face->style_name, "Regular")
+              || strstr(metrics->root.scaler.face->style_name, "Book")
+              || strstr(metrics->root.scaler.face->style_name, "Light")
+              || strstr(metrics->root.scaler.face->style_name, "Medium")
+              || strcmp(metrics->root.scaler.face->style_name, "Italic") == 0
+              || strcmp(metrics->root.scaler.face->style_name, "Oblique") == 0 ) )
+        FT_Outline_Embolden(outline,e_strength);
+    }
 
   Exit:
     return error;

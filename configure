@@ -13,6 +13,8 @@
 # Call the `configure' script located in `builds/unix'.
 #
 
+export LDFLAGS="$LDFLAGS -lm"
+
 rm -f config.mk builds/unix/unix-def.mk builds/unix/unix-cc.mk
 
 if test "x$GNUMAKE" = x; then

@@ -88,9 +88,28 @@
     FT_Error    error;
     FT_Pos      xstr, ystr;
 
+    int checked_enhanced_embolden_env = 0;
+    FT_Bool enhanced_embolden = FALSE;
+
+    if ( checked_enhanced_embolden_env == 0 )
+    {
+      char *enhanced_embolden_env = getenv( "INFINALITY_FT_EMBOLDEN_MAINTAIN_WIDTH" );
+      if ( enhanced_embolden_env != NULL )
+      {
+        if ( strcasecmp(enhanced_embolden_env, "default" ) != 0 )
+        {
+          if ( strcasecmp(enhanced_embolden_env, "true") == 0) enhanced_embolden = TRUE;
+          else if ( strcasecmp(enhanced_embolden_env, "1") == 0) enhanced_embolden = TRUE;
+          else if ( strcasecmp(enhanced_embolden_env, "on") == 0) enhanced_embolden = TRUE;
+          else if ( strcasecmp(enhanced_embolden_env, "yes") == 0) enhanced_embolden = TRUE;
+        }
+      }
+      checked_enhanced_embolden_env = 1;
+    }
+
 
     if ( slot->format != FT_GLYPH_FORMAT_OUTLINE &&
-         slot->format != FT_GLYPH_FORMAT_BITMAP  )
+         slot->format != FT_GLYPH_FORMAT_BITMAP )
       return;
 
     /* some reasonable strength */
@@ -108,7 +127,7 @@
       xstr = xstr * 2;
       ystr = xstr;
     }
-    else /* slot->format == FT_GLYPH_FORMAT_BITMAP */
+    else if ( slot->format == FT_GLYPH_FORMAT_BITMAP )
     {
       /* round to full pixels */
       xstr &= ~63;
@@ -146,7 +165,8 @@
     slot->metrics.width        += xstr;
     slot->metrics.height       += ystr;
     slot->metrics.horiBearingY += ystr;
-    slot->metrics.horiAdvance  += xstr;
+    /* Don't add any horiAdvance - Personal preference */
+    if ( !enhanced_embolden ) slot->metrics.horiAdvance  += xstr;
     slot->metrics.vertBearingX -= xstr / 2;
     slot->metrics.vertBearingY += ystr;
     slot->metrics.vertAdvance  += ystr;

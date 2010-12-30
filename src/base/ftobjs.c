@@ -562,6 +562,45 @@
     FT_Bool       autohint = FALSE;
     FT_Module     hinter;
 
+    TT_Face face2=(TT_Face)face;
+    int checked_auto_autohint_env;
+    FT_Bool auto_autohint = FALSE;
+
+    if ( !checked_auto_autohint_env )
+    {
+      char *auto_autohint_env = getenv( "INFINALITY_FT_AUTO_AUTOHINT" );
+      if ( auto_autohint_env != NULL )
+      {
+        if ( strcasecmp(auto_autohint_env, "default" ) != 0 )
+        {
+          if ( strcasecmp(auto_autohint_env, "true") == 0) auto_autohint = TRUE;
+          else if ( strcasecmp(auto_autohint_env, "1") == 0) auto_autohint = TRUE;
+          else if ( strcasecmp(auto_autohint_env, "on") == 0) auto_autohint = TRUE;
+          else if ( strcasecmp(auto_autohint_env, "yes") == 0) auto_autohint = TRUE;
+        }
+      }
+      checked_auto_autohint_env = 1;
+    }
+/*printf("%d,%d ", load_flags, FT_LOAD_TARGET_NORMAL);
+10000001000101000
+0#define FT_LOAD_DEFAULT                      0x0
+0#define FT_LOAD_NO_SCALE                     0x1
+0#define FT_LOAD_NO_HINTING                   0x2
+1#define FT_LOAD_RENDER                       0x4
+0#define FT_LOAD_NO_BITMAP                    0x8
+1#define FT_LOAD_VERTICAL_LAYOUT              0x10
+0#define FT_LOAD_FORCE_AUTOHINT               0x20
+0#define FT_LOAD_CROP_BITMAP                  0x40
+0#define FT_LOAD_PEDANTIC                     0x80
+1#define FT_LOAD_ADVANCE_ONLY                 0x100
+0#define FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH  0x200
+0#define FT_LOAD_NO_RECURSE                   0x400
+0#define FT_LOAD_IGNORE_TRANSFORM             0x800
+0#define FT_LOAD_MONOCHROME                   0x1000
+0#define FT_LOAD_LINEAR_DESIGN                0x2000
+0#define FT_LOAD_SBITS_ONLY                   0x4000
+1#define FT_LOAD_NO_AUTOHINT                  0x8000U
+*/
 
     if ( !face || !face->size || !face->glyph )
       return FT_Err_Invalid_Face_Handle;
@@ -627,8 +666,11 @@
 
 
         if ( mode == FT_RENDER_MODE_LIGHT             ||
-             face->internal->ignore_unpatented_hinter )
+             face->internal->ignore_unpatented_hinter ||
+             ( auto_autohint && face2->max_profile.maxSizeOfInstructions  == 0 ) )
+        {
           autohint = TRUE;
+        }
       }
     }
 

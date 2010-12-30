@@ -888,6 +888,28 @@
     FT_Int      c, n, first;
     FT_Int      orientation;
 
+    int checked_enhanced_embolden_env = 0;
+    FT_Bool enhanced_embolden = FALSE;
+
+    if ( checked_enhanced_embolden_env == 0 )
+    {
+      char *enhanced_embolden_env = getenv( "INFINALITY_FT_ENHANCED_EMBOLDEN" );
+      if ( enhanced_embolden_env != NULL )
+      {
+        if ( strcasecmp(enhanced_embolden_env, "default" ) != 0 )
+        {
+          if ( strcasecmp(enhanced_embolden_env, "true") == 0)
+            enhanced_embolden = TRUE;
+          else if ( strcasecmp(enhanced_embolden_env, "1") == 0)
+            enhanced_embolden = TRUE;
+          else if ( strcasecmp(enhanced_embolden_env, "on") == 0)
+            enhanced_embolden = TRUE;
+          else if ( strcasecmp(enhanced_embolden_env, "yes") == 0)
+            enhanced_embolden = TRUE;
+        }
+      }
+      checked_enhanced_embolden_env = 1;
+    }
 
     if ( !outline )
       return FT_Err_Invalid_Argument;
@@ -957,7 +979,8 @@
         }
 
         outline->points[n].x = v_cur.x + strength + in.x;
-        outline->points[n].y = v_cur.y + strength + in.y;
+        if ( !enhanced_embolden )
+          outline->points[n].y = v_cur.y + strength + in.y;
 
         v_prev = v_cur;
         v_cur  = v_next;

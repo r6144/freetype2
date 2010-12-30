@@ -180,8 +180,8 @@
         AF_Edge       edge2 = edge1 +
                               axis->num_edges - 1; /* rightmost edge */
 
-
-        if ( axis->num_edges > 1 && AF_HINTS_DO_ADVANCE( hints ) )
+/* dont hint metrics - temporary until different hinting can be done */
+        if ( FALSE && axis->num_edges > 1 && AF_HINTS_DO_ADVANCE( hints ) )
         {
           old_rsb = loader->pp2.x - edge2->opos;
           old_lsb = edge1->opos;
@@ -214,7 +214,8 @@
           slot->lsb_delta = loader->pp1.x - pp1x_uh;
           slot->rsb_delta = loader->pp2.x - pp2x_uh;
         }
-        else
+/* dont hint metrics - temporary until different hinting can be done */
+        else if (FALSE)
         {
           FT_Pos  pp1x = loader->pp1.x;
           FT_Pos  pp2x = loader->pp2.x;
