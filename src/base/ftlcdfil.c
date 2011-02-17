@@ -21,6 +21,7 @@
 #include FT_IMAGE_H
 #include FT_INTERNAL_OBJECTS_H
 
+#include <stdio.h>
 #include <math.h>
 #include <string.h>
 #include <strings.h>
@@ -220,17 +221,19 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
       pseudo_gamma_value = 1;
     }
 
+#if 0 /* I think readable text is more important than proper kerning here */
     /* don't do alignment for < 10 */
     if ( slot->face->size->metrics.x_ppem < 10 )
     {
       alignment_type = 0;
     }
+#endif
 
     if ( mode == FT_RENDER_MODE_LCD )
     {
       if (width >= 4 && alignment_type != 0 )
       {
-        FT_Byte*  line = bitmap->buffer;
+	FT_Byte*  line = bitmap->buffer;
         FT_Byte*  lineabove = bitmap->buffer;
         FT_Byte*  linebelow = bitmap->buffer;
 
@@ -643,27 +646,20 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
       {
         FT_Byte*  line = bitmap->buffer;
         float ppem = (float)slot->face->size->metrics.x_ppem;
+	float x0 = 5.0f, x1 = pseudo_gamma_lt, g0 = pseudo_gamma_value, g1 = 1.0f, gamma;
 
-        if (ppem >= 5 )
+	if (x0 > x1) x0 = x1;
+	/* gamma is piecewise linear from (x0,g0) to (x1,g1); note that x0 might be equal to x1 */
+	if (ppem <= x0) gamma = g0;
+	else if (ppem >= x1) gamma = g1;
+	else gamma = g0 + (ppem - x0) / (x1 - x0) * (g1 - g0); /* x0 < ppem < x1 */
+	/*printf("ppem=%0.4f gamma=%0.4f\n", ppem, gamma); */
+
         for (height = (FT_UInt)bitmap->rows; height > 0; height--, line += bitmap->pitch )
         {
           FT_UInt  xx;
 
-          for ( xx = 0; xx < width; xx += 1 )
-          {
-            /*normal*/
-            /*line[xx] = gamma2 ( line[xx], pseudo_gamma_value );*/
-
-            /* sloped */
-            /*line[xx] = gamma2 ( line[xx], pseudo_gamma_value - 5
-            * (1-pseudo_gamma_value)/(pseudo_gamma_lt -5)
-            + ((1-pseudo_gamma_value)/(pseudo_gamma_lt -5)) * ppem );*/
-
-            /* 1/3-sloped */
-            line[xx] = gamma2 ( line[xx], pseudo_gamma_value - 5
-            * ((1-pseudo_gamma_value)/(3*(pseudo_gamma_lt -5)))
-            * + ((1-pseudo_gamma_value)/(3*(pseudo_gamma_lt -5))) * ppem );
-          }
+          for ( xx = 0; xx < width; xx += 1 ) line[xx] = gamma2 ( line[xx], gamma );
         }
       }
     }
