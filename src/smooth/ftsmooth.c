@@ -283,6 +283,9 @@
           vec->y /= 3;
     }
 
+    if ( slot->library->lcd_stem_align_func )
+      slot->library->lcd_stem_align_func ( bitmap, mode, slot );
+
     if ( slot->library->lcd_filter_func )
       slot->library->lcd_filter_func( bitmap, mode, slot->library );
 
