@@ -221,7 +221,7 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
       pseudo_gamma_value = 1;
     }
 
-#if 0 /* I think readable text is more important than proper kerning here */
+#if 0 /* I think readable text is more important than proper kerning for very small sizes */
     /* don't do alignment for < 10 */
     if ( slot->face->size->metrics.x_ppem < 10 )
     {
