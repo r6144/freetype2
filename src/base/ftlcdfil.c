@@ -48,13 +48,6 @@ int window ( int val )
   else return val;
 }
 */
-static int gamma2 ( int val, float value ) {
-  int result = (int) (256 * (1.0 - pow((1.0 - (float)val/ 256.0) , 1.0/value)));
-  /* Check for overflow, just in case */
-  if (result < 0) result = 0;
-  if (result > 255) result = 255;
-  return result;
-}
 /*
 int gamma3 ( int val, float value ) {
   1- (x-1)^10
