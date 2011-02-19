@@ -15,7 +15,7 @@
 /*                                                                         */
 /***************************************************************************/
 
-
+#define _GNU_SOURCE /* For strcasestr */
 #include <ft2build.h>
 #include FT_LCD_FILTER_H
 #include FT_IMAGE_H
@@ -48,8 +48,12 @@ int window ( int val )
   else return val;
 }
 */
-int gamma2 ( int val, float value ) {
-   return 256 * (1.0 - pow((1.0 - (float)val/ 256.0) , 1.0/value));
+static int gamma2 ( int val, float value ) {
+  int result = (int) (256 * (1.0 - pow((1.0 - (float)val/ 256.0) , 1.0/value)));
+  /* Check for overflow, just in case */
+  if (result < 0) result = 0;
+  if (result > 255) result = 255;
+  return result;
 }
 /*
 int gamma3 ( int val, float value ) {
@@ -143,6 +147,70 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
   return true;
 }*/
 
+static float
+get_gamma ( float ppem )
+{
+  float pseudo_gamma_value = 1;
+  float pseudo_gamma_lt = 0;
+  FT_UInt checked_pseudo_gamma_value = 0;
+
+  if ( checked_pseudo_gamma_value == 0 )
+  {
+    char *pseudo_gamma_value_env = getenv( "INFINALITY_FT_PSEUDO_GAMMA" );
+    if ( pseudo_gamma_value_env != NULL )
+    {
+      float f1, f2;
+
+      if ( strcasecmp(pseudo_gamma_value_env, "default" ) != 0)
+      {
+	sscanf ( pseudo_gamma_value_env, "%f %f", &f1, &f2 );
+	pseudo_gamma_lt = f1;
+	pseudo_gamma_value = f2;
+      }
+      if ( pseudo_gamma_value < .1 ) pseudo_gamma_value = 1;
+      if ( pseudo_gamma_lt < 0 ) pseudo_gamma_lt = 1;
+    }
+    checked_pseudo_gamma_value = 1;
+  }
+
+  /*printf("%s,%s ", slot->face->family_name, slot->face->style_name);*/
+  /*printf("%d ", slot->face->size->metrics.x_ppem);*/
+
+  /* set gamma value to 1 if out of range */
+  if ( ppem >= pseudo_gamma_lt )
+  {
+    pseudo_gamma_value = 1;
+  }
+
+  if ( pseudo_gamma_value == 1 ) return 1.0;
+  else {
+    float x0 = 5.0f, x1 = pseudo_gamma_lt, g0 = pseudo_gamma_value, g1 = 1.0f;
+
+    if (x0 > x1) x0 = x1;
+    /* gamma is piecewise linear from (x0,g0) to (x1,g1); note that x0 might be equal to x1 */
+    if (ppem <= x0) return g0;
+    else if (ppem >= x1) return g1;
+    else return g0 + (ppem - x0) / (x1 - x0) * (g1 - g0); /* x0 < ppem < x1 */
+  }
+}
+
+static void
+gamma_correct ( FT_Bitmap* bitmap,
+		float gamma )
+{
+  if (gamma != 1.0f) {
+    FT_Byte*  line = bitmap->buffer;
+    FT_UInt width = (FT_UInt)bitmap->width, height;
+
+    for (height = (FT_UInt)bitmap->rows; height > 0; height--, line += bitmap->pitch )
+      {
+	FT_UInt  xx;
+	
+	for ( xx = 0; xx < width; xx += 1 ) line[xx] = gamma2 ( line[xx], gamma );
+      }
+  }
+}
+
 
   /* Stem alignment for bitmaps;  A hack with very nice results */
   /* Ideally this could be implemented on the outline, prior to
@@ -160,9 +228,6 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
 
     FT_UInt alignment_type = 0;
     FT_UInt checked_alignment_type = 0;
-    float pseudo_gamma_value = 1;
-    float pseudo_gamma_lt = 0;
-    FT_UInt checked_pseudo_gamma_value = 0;
 
     if ( checked_alignment_type == 0)
     {
@@ -191,34 +256,6 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
           alignment_type = 0;
       }
       checked_alignment_type = 1;
-    }
-
-    if ( checked_pseudo_gamma_value == 0 )
-    {
-      char *pseudo_gamma_value_env = getenv( "INFINALITY_FT_PSEUDO_GAMMA" );
-      if ( pseudo_gamma_value_env != NULL )
-      {
-        float f1, f2;
-
-        if ( strcasecmp(pseudo_gamma_value_env, "default" ) != 0)
-        {
-          sscanf ( pseudo_gamma_value_env, "%f %f", &f1, &f2 );
-          pseudo_gamma_lt = f1;
-          pseudo_gamma_value = f2;
-        }
-        if ( pseudo_gamma_value < .1 ) pseudo_gamma_value = 1;
-        if ( pseudo_gamma_lt < 0 ) pseudo_gamma_lt = 1;
-      }
-      checked_pseudo_gamma_value = 1;
-    }
-
-    /*printf("%s,%s ", slot->face->family_name, slot->face->style_name);*/
-    /*printf("%d ", slot->face->size->metrics.x_ppem);*/
-
-    /* set gamma value to 1 if out of range */
-    if ( slot->face->size->metrics.x_ppem >= pseudo_gamma_lt )
-    {
-      pseudo_gamma_value = 1;
     }
 
 #if 0 /* I think readable text is more important than proper kerning for very small sizes */
@@ -642,26 +679,7 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
         }
       }
 
-      if ( pseudo_gamma_value != 1 )
-      {
-        FT_Byte*  line = bitmap->buffer;
-        float ppem = (float)slot->face->size->metrics.x_ppem;
-	float x0 = 5.0f, x1 = pseudo_gamma_lt, g0 = pseudo_gamma_value, g1 = 1.0f, gamma;
-
-	if (x0 > x1) x0 = x1;
-	/* gamma is piecewise linear from (x0,g0) to (x1,g1); note that x0 might be equal to x1 */
-	if (ppem <= x0) gamma = g0;
-	else if (ppem >= x1) gamma = g1;
-	else gamma = g0 + (ppem - x0) / (x1 - x0) * (g1 - g0); /* x0 < ppem < x1 */
-	/*printf("ppem=%0.4f gamma=%0.4f\n", ppem, gamma); */
-
-        for (height = (FT_UInt)bitmap->rows; height > 0; height--, line += bitmap->pitch )
-        {
-          FT_UInt  xx;
-
-          for ( xx = 0; xx < width; xx += 1 ) line[xx] = gamma2 ( line[xx], gamma );
-        }
-      }
+      gamma_correct ( bitmap, get_gamma ( slot->face->size->metrics.x_ppem ));
     }
   }
 
