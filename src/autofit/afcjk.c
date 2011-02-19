@@ -1040,7 +1040,10 @@
 
       /* skip all non-stem edges */
       edge2 = edge->link;
-      if ( !edge2 || ( has_last_stem && edge->pos < last_stem_pos + 64 ) )
+      /* Some CJK characters have so many stems that the hinter is likely to merge two adjacent ones.
+	 To solve this problem, if either edge of a stem is too close to the previous one, we avoid aligning the two edges,
+	 but rather interpolate their locations at the end of this function in order to preserve the space between the stems. */
+      if ( !edge2 || ( has_last_stem && ( edge->pos < last_stem_pos + 64 || edge2->pos < last_stem_pos + 64 ) ) )
       {
         skipped++;
         continue;
@@ -1052,6 +1055,7 @@
       {
         af_cjk_align_linked_edge( hints, dim, edge2, edge );
         edge->flags |= AF_EDGE_DONE;
+	/* We rarely reaches here it seems; usually the two edges belonging to one stem are marked as DONE together */
 	has_last_stem = 1;  last_stem_pos = edge->pos;
         continue;
       }
@@ -1145,6 +1149,7 @@
       anchor = edge;
       edge->flags  |= AF_EDGE_DONE;
       edge2->flags |= AF_EDGE_DONE;
+      has_last_stem = 1;  last_stem_pos = edge2->pos;
     }
 
     /* make sure that lowercase m's maintain their symmetry */
