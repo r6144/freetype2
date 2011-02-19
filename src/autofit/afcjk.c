@@ -1025,6 +1025,8 @@
     AF_Edge       anchor   = 0;
     FT_Pos        delta    = 0;
     FT_Int        skipped  = 0;
+    FT_Bool has_last_stem = 0;
+    FT_Pos last_stem_pos = 0;
 
 
     /* now we align all stem edges. */
@@ -1038,7 +1040,7 @@
 
       /* skip all non-stem edges */
       edge2 = edge->link;
-      if ( !edge2 )
+      if ( !edge2 || ( has_last_stem && edge->pos < last_stem_pos + 64 ) )
       {
         skipped++;
         continue;
@@ -1050,6 +1052,7 @@
       {
         af_cjk_align_linked_edge( hints, dim, edge2, edge );
         edge->flags |= AF_EDGE_DONE;
+	has_last_stem = 1;  last_stem_pos = edge->pos;
         continue;
       }
 
