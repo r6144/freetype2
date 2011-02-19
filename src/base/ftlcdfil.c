@@ -156,11 +156,13 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
 
     FT_UInt alignment_type = 0;
     FT_UInt checked_alignment_type = 0;
-    float ppem = 14.0f; /* Default value used when slot->face==NULL, as sometimes happens to openoffice.org */
+    float ppem = 14.0f; /* Default value used when slot->face==NULL, as sometimes happens in openoffice.org */
     const char *style_name = "Regular";
 
-    if ( slot->face ) { ppem = slot->face->size->metrics.x_ppem; style_name = slot->face->style_name; }
-    else { fprintf(stderr, "WARNING: NULL face in _lcd_stem_align()\n"); }
+    if ( slot->face ) {
+      ppem = slot->face->size->metrics.x_ppem;
+      if (slot->face->style_name) style_name = slot->face->style_name; /* can be NULL in evince */
+    } else { fprintf(stderr, "WARNING: NULL face in _lcd_stem_align()\n"); }
 
     if ( checked_alignment_type == 0)
     {
