@@ -422,7 +422,7 @@ gamma_correct ( FT_Bitmap* bitmap,
 
 #endif /* !FT_CONFIG_OPTION_SUBPIXEL_RENDERING */
 
-    gamma_correct ( bitmap, get_gamma ( slot->face->size->metrics.x_ppem ));
+    gamma_correct ( bitmap, get_gamma ( (slot->face) ? slot->face->size->metrics.x_ppem : 14.0f ));
 
     FT_Outline_Translate( outline, x_shift, y_shift );
 

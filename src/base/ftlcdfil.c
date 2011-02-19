@@ -156,6 +156,11 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
 
     FT_UInt alignment_type = 0;
     FT_UInt checked_alignment_type = 0;
+    float ppem = 14.0f; /* Default value used when slot->face==NULL, as sometimes happens to openoffice.org */
+    const char *style_name = "Regular";
+
+    if ( slot->face ) { ppem = slot->face->size->metrics.x_ppem; style_name = slot->face->style_name; }
+    else { fprintf(stderr, "WARNING: NULL face in _lcd_stem_align()\n"); }
 
     if ( checked_alignment_type == 0)
     {
@@ -174,13 +179,13 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
         else if (strcasecmp(alignment_type_env, "infinality1") == 0) alignment_type = 6;
         else alignment_type = 0;
 
-        if ( /*strstr(slot.metrics->root.scaler.face->style_name, "Regular")
-          || strstr(slot.metrics->root.scaler.face->style_name, "Book")
-          || strstr(slot.metrics->root.scaler.face->style_name, "Medium")
-          ||*/ strcasestr(slot->face->style_name, "Italic")
-          || strcasestr(slot->face->style_name, "Oblique") )
+        if ( /*strstr(style_name, "Regular")
+          || strstr(style_name, "Book")
+          || strstr(style_name, "Medium")
+          ||*/ strcasestr(style_name, "Italic")
+          || strcasestr(style_name, "Oblique") )
           alignment_type = 0;
-        if ( strcasestr(slot->face->style_name, "Bold") )
+        if ( strcasestr(style_name, "Bold") )
           alignment_type = 0;
       }
       checked_alignment_type = 1;
@@ -188,7 +193,7 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
 
 #if 0 /* I think readable text is more important than proper kerning for very small sizes */
     /* don't do alignment for < 10 */
-    if ( slot->face->size->metrics.x_ppem < 10 )
+    if ( ppem < 10 )
     {
       alignment_type = 0;
     }
@@ -607,9 +612,8 @@ bool Resample(FT_Byte*  line, int newWidth, int newHeight)
         }
       }
 
-#if 0
-      gamma_correct ( bitmap, get_gamma ( slot->face->size->metrics.x_ppem ));
-#endif
+      /* Gamma correction (giving higher contrast for antialiased strokes at the cost of heavier weight) is now done in
+	 ftsmooth.c */
     }
   }
 
